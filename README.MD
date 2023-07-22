@@ -57,6 +57,7 @@ You may need to adjust the power depending on the weight of your construct and o
 - Bookmark system: you will be able to name and store your favorite floors and go to them with a key press
 - support for emitter to be able to send a signal to a specific channel to close a door to lock the elevator in position
 - dedicated HUD with more informations and with some customizations possible (AR View of the position of the elevator, custom fuel gauge, etc...)
+- sreen support to display position informations and bookmarks and navigate by clicking on it
 
 # Support or donation
 
