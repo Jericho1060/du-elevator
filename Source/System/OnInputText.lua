@@ -1,0 +1,1 @@
+Script.system:inputText(text)

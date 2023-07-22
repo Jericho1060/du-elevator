@@ -1,0 +1,1 @@
+Script.construct:playerBoarded(id)
