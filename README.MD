@@ -32,6 +32,8 @@ You must link the following elements to the remote control (order doesn't matter
     - one pointing on the orther side of the angle (this one is used for autoyaw)
     - ![Adustors Positioning](./images/adjustors.png)
 
+You may need to adjust the power depending on the weight of your construct and on the total weight you want to lift.
+
 ### Installation of the script
 
 - copy the content of the config.json file and paste it on the remote control (right click on the remote control -> advanced -> paste lua configuration from clipboard)
