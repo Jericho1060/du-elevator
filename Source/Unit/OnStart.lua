@@ -270,7 +270,7 @@ local systemOnFlush = {
 
         local constructYawTargetVelocity = -combinedRollYawInput * yawSpeedFactor
         local constructYawTargetAcceleration = yawAccelerationFactor * (constructYawTargetVelocity - constructYawVelocity)
-        local constructTargetAngularVelocity = rollPID:get() * constructForward + pitchPID:get() * constructRight + constructYawTargetAcceleration * constructUp
+        local constructTargetAngularVelocity = rollPID:get() * constructForward + pitchPID:get() * constructRight + yawPID:get() * constructUp
 
         Nav:setEngineTorqueCommand('torque', constructTargetAngularVelocity, keepCollinearity, 'airfoil', '', '', tolerancePercentToSkipOtherPriorities)
 
