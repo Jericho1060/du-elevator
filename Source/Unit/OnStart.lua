@@ -2,34 +2,52 @@
     DU-ELEVATOR by Jericho
 ]]
 
+--[[
+    Bookmarks: you can store several altitudes here to navigate easily
+]]
+local Bookmarks = {
+    { name = 'Start Point', altitude = 285 },
+    { name = 'Hovering', altitude = 300 },
+    { name = 'Floor 1', altitude = 350 },
+    { name = 'Floor 2', altitude = 500 }
+}
+
+--[[
+    LUA PARAMETERS
+]]
 __DEBUG = false --export: Debug mode, will print more information in the console
+ShowParentingWidget = false --export: Show the parenting widget
+ShowControlUnitWidget = false --export: show the default widget of the construct
 
 --[[
     Version Management
 ]]
-
-local version = "V 1.0.0"
+local version = "V 1.1.0"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
-
+--[[
+    Fuel Tanks Metatable By Jericho
+    Version: 1.0.0
+    Unminified Source available at: https://github.com/Jericho1060/DualUniverse/blob/master/ElementsMetatable/FuelTank.lua
+]]
+FuelTank={__index={name='',percentage=0,timeLeft=0,lastRefresh=0,fuelType='rocket',refresh=function(self)local a=system.getUtcTime()if lastRefresh~=a then local b=self.getClass():lower()if b:find('atmo')then self.fuelType="atmo"elseif b:find('space')then self.fuelType="space"end;local c=self.getWidgetData()local d=json.decode(c)self.name=d.name;self.percentage=d.percentage;self.timeLeft=tonumber(d.timeLeft)self.lastRefresh=a end end,getName=function(self)self:refresh()return self.name end,getPercentFilled=function(self)self:refresh()return self.percentage end,getSecondsLeft=function(self)self:refresh()return self.timeLeft end,getFuelType=function(self)self:refresh()return self.fuelType end,getTimeLeftString=function(self)local e=self:getSecondsLeft()if e==nil or e<=0 then return"-"end;days=string.format("%2.f",math.floor(e/(3600*24)))hours=string.format("%2.f",math.floor(e/3600-days*24))mins=string.format("%2.f",math.floor(e/60-hours*60-days*24*60))secs=string.format("%2.f",math.floor(e-hours*3600-days*24*60*60-mins*60))str=""if tonumber(days)>0 then str=str..days.."d "end;if tonumber(hours)>0 then str=str..hours.."h "end;if tonumber(mins)>0 then str=str..mins.."m "end;if tonumber(secs)>0 then str=str..secs.."s"end;return str end,dump=function(self)self:refresh()system.print('{name="'..self.name..'",percentage='..self.percentage..',timeLeft='..self.timeLeft..',fuelType="'..self.fuelType..'"}')end}}
 --[[
     Detecting elements linked
 ]]
 core = nil
 fuelTanks = {}
-
 for slot_name, slot in pairs(unit) do
     if
-        type(slot) == "table"
-        and type(slot.export) == "table"
-        and slot.getClass
+    type(slot) == "table"
+            and type(slot.export) == "table"
+            and slot.getClass
     then
         local class = slot.getClass():lower()
         if class:find("coreunit") then
             core = slot
         elseif class:find("fuelcontainer") then
-            table.insert(fuelTanks, slot)
+            fuelTanks[#fuelTanks + 1] = setmetatable(slot, FuelTank)
         end
     end
 end
@@ -64,18 +82,13 @@ Nav.axisCommandManager:setTargetGroundAltitude(0)
 unit.deactivateGroundEngineAltitudeStabilization()
 
 -- Parenting widget
-parentingPanelId = system.createWidgetPanel("Docking")
-parentingWidgetId = system.createWidget(parentingPanelId,"parenting")
-system.addDataToWidget(unit.getWidgetDataId(),parentingWidgetId)
-
--- Fuel widget generation (Updated code By Jericho)
---TODO: replace by custom HUD
-if (#fuelTanks > 0) then
-    fuelTankPanelId = system.createWidgetPanel("Fuel Tanks")
-    fuelTankWidgetId = system.createWidget(fuelTankPanelId,"fuel_container")
-    for _,tank in pairs(fuelTanks) do
-        system.addDataToWidget(tank.getWidgetDataId(),fuelTankWidgetId)
-    end
+if ShowParentingWidget then
+    parentingPanelId = system.createWidgetPanel("Docking")
+    parentingWidgetId = system.createWidget(parentingPanelId,"parenting")
+    system.addDataToWidget(unit.getWidgetDataId(),parentingWidgetId)
+end
+if not ShowControlUnitWidget then
+    unit.hideWidget()
 end
 
 --[[
@@ -87,19 +100,36 @@ ConstructInitPos = construct.getWorldPosition()
 if __DEBUG then system.print('ConstructInitPos: ' .. json.encode(ConstructInitPos)) end
 BaseForward = vec3(construct.getWorldForward())
 if __DEBUG then system.print('BaseForward: ' .. json.encode(BaseForward)) end
-BaseAltitute = 285 --export: the start altitude of the elevator (lower position altitude)
+BaseAltitute = Bookmarks[1].altitude --getting the base altitude from the 1st bookmark
+--init a value to store the target altitude
+TargetAltitude = core.getAltitude() --by default to the start altitude to avoid falling down if in the air
+
+ElevatorData = {
+    isBreaking = brakeInput == 1,
+    verticalSpeed = 0,
+    verticalSpeedSigned = 0,
+    lateralSpeed = 0,
+    longitudinalSpeed = 0,
+    altitude = TargetAltitude,
+    direction = 'stabilizing',
+}
 
 --TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
 MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
 if __DEBUG then system.print('MaxSpeed: ' .. MaxSpeed) end
 
---init a value to store the target altitude
-TargetAltitude = core.getAltitude() --by default to the start altitude to avoid falling down if in the air
+--base selected bookmark is 0 -> none selected as index 0 doesn't exist in lua
+selectedBookmarkIndex = 0
+
+--[[
+    init the HUD
+]]
+system.showScreen(true)
 
 --[[
     Kinematics functions by Jaylebreak
     Source available at https://gitlab.com/JayleBreak/dualuniverse/-/blob/master/DUflightfiles/autoconf/custom/kinematics.lua
-]] 
+]]
 function computeAccelerationTime(initial, acceleration, final) return (final - initial)/acceleration end
 function computeDistanceAndTime(initial, final, mass, thrust, t50, brakeThrust)
     t50 = t50 or 0
@@ -126,7 +156,7 @@ function computeDistanceAndTime(initial, final, mass, thrust, t50, brakeThrust)
             while math.abs(timeToMax - lasttime) > 0.25 do
                 local t = (timeToMax + lasttime)/2
                 if speedchk(v(t)) then
-                    timeToMax = t 
+                    timeToMax = t
                 else
                     lasttime = t
                 end
@@ -146,7 +176,7 @@ function computeDistanceAndTime(initial, final, mass, thrust, t50, brakeThrust)
 end
 
 --[[
-    Commpute angle betwwen vectors by Jericho
+    Compute angle between vectors by Jericho
 ]]
 function signedAngleBetween(vec1, vec2, planeNormal)
     local normVec1 = vec1:project_on_plane(planeNormal):normalize()
@@ -159,7 +189,10 @@ function signedAngleBetween(vec1, vec2, planeNormal)
     end
     return angle
 end
-
+--[[
+	formatting numbers by adding a space between thousands by Jericho
+]]
+function format_number(a)local b=a;while true do b,k=string.gsub(b,"^(-?%d+)(%d%d%d)",'%1 %2')if k==0 then break end end;local c=string.sub(b,-2)if c=='.0'then b=string.sub(b,1,b:len()-2)end;return b end
 --[[
     DU-LUA-Framework by Jericho
     Permit to code easier by grouping most of the code in a single event Unit > Start
@@ -187,20 +220,14 @@ String = {
 string = setmetatable(string, String)
 string.__index = string
 
-local systemOnUpdate = {
-    function ()
-        Nav:update()
-    end
-}
-
 local systemOnFlush = {
     function()
-        local yawSpeedFactor = 1.5
+        local yawSpeedFactor = 1 --export: the auto yaw speed multiplier
         local yawAccelerationFactor = 3
         local lateralAntiDriftFactor = 1
         local lateralStrafeFactor = 5
         local brakeSpeedFactor = 1
-        local brakeFlatFactor = 4 
+        local brakeFlatFactor = 4
         local autoBrakeSpeed = 15
         -- validate params
         brakeSpeedFactor = math.max(brakeSpeedFactor, 0.01)
@@ -233,6 +260,8 @@ local systemOnFlush = {
 
         -- Axis
         local worldVertical = vec3(core.getWorldVertical())
+        local worldRight = vec3(core.getWorldRight())
+        local worldForward = vec3(core.getWorldForward())
         local constructUp = vec3(construct.getWorldOrientationUp())
         local constructForward = vec3(construct.getWorldOrientationForward())
         local constructRight = vec3(construct.getWorldOrientationRight())
@@ -248,11 +277,20 @@ local systemOnFlush = {
         local dontKeepCollinearity = 1 -- for easier reading
         local tolerancePercentToSkipOtherPriorities = 1 -- if we are within this tolerance (in%), we don't go to the next priorities
 
+        --fake braking value
+        local canBrake = false
+
         -- keeping the start position alignement
         local StrafeSpeedFactor = 50 --export: useg to increase the force of the alignement, decrease the value if the alignement is too strong or increase it if it's too slow
         local positionDifference = constructTargetPosition - constructWorldPosition
         local lateralOffset = positionDifference:project_on(constructRight):len() * utils.sign(positionDifference:dot(constructRight))
+        ElevatorData.lateralSpeed = constructVelocity:project_on(worldRight):len()
+        local lateralDistance = math.abs(lateralOffset)
         local longitudinalOffset = positionDifference:project_on(constructForward):len() * utils.sign(positionDifference:dot(constructForward))
+        ElevatorData.longitudinalSpeed = constructVelocity:project_on(worldForward):len()
+        local longitudinalDistance = math.abs(longitudinalOffset)
+        if (lateralDistance < .25) and (longitudinalDistance < .25) then canBrake = true end
+        if ((ElevatorData.lateralSpeed*3.6) > lateralDistance) or ((ElevatorData.longitudinalSpeed*3.6) > longitudinalDistance) then canBrake = true end
         lateralPID:inject(lateralOffset)
         Nav.axisCommandManager:setThrottleCommand(axisCommandId.lateral, lateralPID:get() * StrafeSpeedFactor)
         longitudinalPID:inject(longitudinalOffset)
@@ -268,43 +306,51 @@ local systemOnFlush = {
         pitchPID:inject(targetPitchDeg - currentPitchDeg)
         yawPID:inject(-targetYawDeg*yawSpeedFactor)
 
-        local constructYawTargetVelocity = -combinedRollYawInput * yawSpeedFactor
-        local constructYawTargetAcceleration = yawAccelerationFactor * (constructYawTargetVelocity - constructYawVelocity)
         local constructTargetAngularVelocity = rollPID:get() * constructForward + pitchPID:get() * constructRight + yawPID:get() * constructUp
 
         Nav:setEngineTorqueCommand('torque', constructTargetAngularVelocity, keepCollinearity, 'airfoil', '', '', tolerancePercentToSkipOtherPriorities)
 
         -- moving up or down from TargetAltitude
-        local verticalSpeed = constructVelocity:project_on(worldVertical):len()
-        local verticalSpeedSigned = verticalSpeed * -utils.sign(constructVelocity:dot(worldVertical))
+        ElevatorData.verticalSpeed = constructVelocity:project_on(worldVertical):len()
+        ElevatorData.verticalSpeedSigned = ElevatorData.verticalSpeed * -utils.sign(constructVelocity:dot(worldVertical))
         local brakeDistance = 0
         local maxBrake = construct.getMaxBrake()
         if maxBrake ~= nil then
-            brakeDistance, _ = computeDistanceAndTime(verticalSpeed, 0, construct.getInertialMass(), 0, 0, maxBrake - (core.getGravityIntensity() * construct.getInertialMass()) * utils.sign(verticalSpeedSigned))
+            brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, construct.getInertialMass(), 0, 0, maxBrake - (core.getGravityIntensity() * construct.getInertialMass()) * utils.sign(ElevatorData.verticalSpeedSigned))
         end
-        local coreAltitude = core.getAltitude()
-        local distance = TargetAltitude - coreAltitude
+        ElevatorData.altitude = core.getAltitude()
+        local distance = TargetAltitude - ElevatorData.altitude
         local targetDistance = utils.sign(distance) * (math.abs(distance)-brakeDistance)
         distancePID:inject(targetDistance)
-        if distancePID:get() > 0.5 or verticalSpeedSigned < -MaxSpeed then --using a 0.5 meter deadband for stabilizing
+        if distancePID:get() > 0.5 or ElevatorData.verticalSpeedSigned < -MaxSpeed then --using a 0.5 meter deadband for stabilizing
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, 1)
-        elseif distancePID:get() < -0.5 or verticalSpeedSigned > MaxSpeed then
+            ElevatorData.direction = 'up'
+            if ElevatorData.verticalSpeedSigned < 0 then
+                finalBrakeInput = 1
+            end
+        elseif distancePID:get() < -0.5 or ElevatorData.verticalSpeedSigned > MaxSpeed then
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, -1)
+            ElevatorData.direction = 'down'
+            if ElevatorData.verticalSpeedSigned > 0 then
+                finalBrakeInput = 1
+            end
         else
             Nav.axisCommandManager:resetCommand(axisCommandId.vertical)
+            ElevatorData.direction = 'stabilizing'
         end
 
         --Brakes
         if
-            (math.abs(distance) < verticalSpeed)
-            or verticalSpeed > MaxSpeed
-            or (brakeDistance > math.abs(distance))
-            or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
+        (math.abs(distance) < (ElevatorData.verticalSpeed*3.6) and canBrake)
+                or (ElevatorData.verticalSpeed >= MaxSpeed)
+                or ((brakeDistance > math.abs(distance)) and canBrake)
+                or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
         then
             finalBrakeInput = 1
         end
+        ElevatorData.isBreaking = (finalBrakeInput == 1)
         local brakeAcceleration = -finalBrakeInput * (brakeSpeedFactor * constructVelocity + brakeFlatFactor * constructVelocityDir)
-        
+
         Nav:setEngineForceCommand('brake', brakeAcceleration)
 
         -- AutoNavigation regroups all the axis command by 'TargetSpeed'
@@ -323,7 +369,7 @@ local systemOnFlush = {
             autoNavigationEngineTags = autoNavigationEngineTags .. ' , ' .. longitudinalEngineTags
             autoNavigationAcceleration = autoNavigationAcceleration + longitudinalAcceleration
             if (Nav.axisCommandManager:getTargetSpeed(axisCommandId.longitudinal) == 0 or -- we want to stop
-                Nav.axisCommandManager:getCurrentToTargetDeltaSpeed(axisCommandId.longitudinal) < - Nav.axisCommandManager:getTargetSpeedCurrentStep(axisCommandId.longitudinal) * 0.5) -- if the longitudinal velocity would need some braking
+                    Nav.axisCommandManager:getCurrentToTargetDeltaSpeed(axisCommandId.longitudinal) < - Nav.axisCommandManager:getTargetSpeedCurrentStep(axisCommandId.longitudinal) * 0.5) -- if the longitudinal velocity would need some braking
             then
                 autoNavigationUseBrake = true
             end
@@ -367,9 +413,202 @@ local systemOnFlush = {
     end
 }
 
+local systemOnUpdate = {
+    function ()
+        Nav:update()
+    end,
+    function ()
+        --That function is used for rendering the HUD, you can update it or replace all its content to customise it. You can also remove it if you don't want a HUD
+        local direction = 'Stabilizing'
+        if ElevatorData.verticalSpeedSigned > 0 then
+            direction = 'Up'
+        elseif ElevatorData.verticalSpeedSigned < 0 then
+            direction = 'Down'
+        end
+
+        local brakeStatus = 'Off'
+        if ElevatorData.isBreaking then
+            brakeStatus = 'On'
+        end
+        local html = [[
+            <style>
+                * {
+                    font-size:1vh !important;
+                }
+                .hud {
+                    position: absolute;
+                    left: 5vh;
+                    top: 5vh;
+                    right: 5vh;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: left;
+                    align-items: left;
+                }
+                .widget_container {
+                    border: 2px solid orange;
+                    border-radius:.5vh;
+                    background-color: rgba(0, 0, 0, .5);
+                    display: flex;
+                    flex-direction: column;
+                    padding:.5vh;
+                    margin-top:1vh;
+                }
+                .widget_container div {
+                    display: flex;
+                    flex-direction: row;
+                    justify-content: space-between;
+                }
+                .widget_container div div {
+                    margin:.25vh;
+                }
+                .widget_container div div:first-child {
+                    text-transform: uppercase;
+                    font-weight: bold;
+                }
+                .selected {
+                    color: teal;
+                }
+                .movingto {
+                    color: green;
+                }
+                .atmo .gauge {
+                    background-color: #22d3ee;
+                }
+                .atmo .gauge_label {
+                    color: #155e75;
+                }
+                .space .gauge {
+                    background-color: #fbbf24;
+                }
+                .space .gauge_label {
+                    color: #92400e;
+                }
+                .rocket .gauge {
+                    background-color: #a78bfa;
+                }
+                .rocket .gauge_label {
+                    color: #5b21b6;
+                }
+                .gauge_container {
+                    display:block;
+                    width:100%;
+                    min-width:10vw;
+                    position: relative;
+                    border: 1px solid black;
+                    background-color: rgba(0, 0, 0, .75);
+                    height: 1.5vh;
+                }
+                .gauge {
+                    position: absolute;
+                    z-index:1;
+                    top:-.25vh;
+                    left:-.25vh;
+                    height:100%;
+                    margin:0;
+                    background-color: cyan;
+                }
+                .gauge_label {
+                    position:relative;
+                    display:block;
+                    z-index:10;
+                    margin:0;
+                    padding:0;
+                    width:100%;
+                    text-align:center;
+                }
+            </style>
+            <div class="hud">
+                <div class="widget_container">
+                    <div>
+                        <div>Base Altitude</div><div>]] .. format_number(utils.round(BaseAltitute)) .. [[m</div>
+                    </div>
+                    <div>
+                        <div>Target Altitude</div><div>]] .. format_number(utils.round(TargetAltitude)) .. [[m</div>
+                    </div>
+                    <div>
+                        <div>Current Altitude</div><div>]] .. format_number(utils.round(ElevatorData.altitude)) .. [[m</div>
+                    </div>
+                    <div>
+                        <div>Vertical Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.verticalSpeed*3.6))) .. [[km/h</div>
+                    </div>
+                    <div>
+                        <div>Lateral Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.lateralSpeed*3.6))) .. [[km/h</div>
+                    </div>
+                    <div>
+                        <div>Longitudinal Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.longitudinalSpeed*3.6))) .. [[km/h</div>
+                    </div>
+                    <div>
+                        <div>Direction</div><div>]] .. ElevatorData.direction .. [[</div>
+                    </div>
+                    <div>
+                        <div>Brake</div><div>]] .. brakeStatus .. [[</div>
+                    </div>
+                </div>
+        ]]
+        if #fuelTanks > 0 then
+            html = html .. '<div class="widget_container">'
+            for _, tank in pairs(fuelTanks) do
+                html = html .. '<div><div>' .. tank:getName() .. '</div><div>' .. tank:getTimeLeftString() .. '</div></div><div class="gauge_container ' .. tank:getFuelType() .. '"><div class="gauge" style="width:' .. utils.round(tank:getPercentFilled()) .. '%;"></div><div class="gauge_label"><div style="margin-left:auto;margin-right:auto;padding:0;margin-top:-.25vh;">' .. format_number(utils.round(tank:getPercentFilled())) .. '%</div></div></div>'
+            end
+            html = html .. '</div>'
+        end
+        if #Bookmarks > 0 then
+            html = html .. '<div class="widget_container"><div><div>Bookmarks</div></div>'
+            for index, bookmark in ipairs(Bookmarks) do
+                local class=''
+                if selectedBookmarkIndex == index then
+                    class = 'selected'
+                end
+                local displayName = bookmark.name
+                if selectedBookmarkIndex > 0 and bookmark.altitude == TargetAltitude then
+                    displayName = ' >> ' .. bookmark.name
+                    class = 'movingto'
+                end
+                html = html .. '<div class="' .. class .. '"><div>' .. displayName .. '</div><div>' .. format_number(bookmark.altitude) .. 'm</div></div>'
+            end
+            html = html .. '</div>'
+        end
+
+        html = html .. '</div>'
+        system.setScreen(html)
+    end
+}
 
 Script.system:onUpdate(systemOnUpdate)
 Script.system:onFlush(systemOnFlush)
+
+--[[
+    Actions
+]]
+local systemActionsStart = {}
+
+systemActionsStart[Script.system.ACTIONS.DOWN] =  function ()
+    if selectedBookmarkIndex < #Bookmarks then
+        selectedBookmarkIndex = selectedBookmarkIndex + 1
+    else
+        selectedBookmarkIndex = 1
+    end
+    if __DEBUG then system.print('Selected Bookmark Index: ' .. selectedBookmarkIndex) end
+end
+systemActionsStart[Script.system.ACTIONS.UP] =  function ()
+    if selectedBookmarkIndex > 1 then
+        selectedBookmarkIndex = selectedBookmarkIndex - 1
+    else
+        selectedBookmarkIndex = #Bookmarks
+    end
+    if __DEBUG then system.print('Selected Bookmark Index: ' .. selectedBookmarkIndex) end
+end
+systemActionsStart[Script.system.ACTIONS.STRAFE_RIGHT] =  function ()
+    brakeInput = 0
+    if selectedBookmarkIndex > 0 then
+        TargetAltitude = Bookmarks[selectedBookmarkIndex].altitude
+        if __DEBUG then system.print('Target Altitude: ' .. TargetAltitude) end
+    else
+        system.print('No bookmark selected')
+    end
+end
+Script.system:onActionStart(systemActionsStart) --loading all "actionStart" functions
 
 --[[
     Chat Commands
@@ -384,3 +623,4 @@ Script.system:onInputText(function (text)
         system.print('Unknown command')
     end
 end)
+
