@@ -68,10 +68,8 @@ Current selected bookmark is displayed in blue, the current bookmark the elevato
 
 # Coming Soon
 
-- Bookmark system: you will be able to name and store your favorite floors and go to them with a key press
 - support for emitter to be able to send a signal to a specific channel to close a door to lock the elevator in position
-- dedicated HUD with more informations and with some customizations possible (AR View of the position of the elevator, custom fuel gauge, etc...)
-- sreen support to display position informations and bookmarks and navigate by clicking on it
+- screen support to display position informations and bookmarks and navigate by clicking on it
 
 # Support or donation
 
