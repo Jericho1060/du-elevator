@@ -9,7 +9,9 @@ local Bookmarks = {
     { name = 'Start Point', altitude = 285 },
     { name = 'Hovering', altitude = 300 },
     { name = 'Floor 1', altitude = 350 },
-    { name = 'Floor 2', altitude = 500 }
+    { name = 'Floor 2', altitude = 500 },
+    { name = 'Space 1', altitude = 5000 },
+    { name = 'Space 2', altitude = 6000 },
 }
 
 --[[
@@ -22,7 +24,7 @@ ShowControlUnitWidget = false --export: show the default widget of the construct
 --[[
     Version Management
 ]]
-local version = "V 1.1.0"
+local version = "V 1.1.1"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -222,7 +224,7 @@ string.__index = string
 
 local systemOnFlush = {
     function()
-        local yawSpeedFactor = 1 --export: the auto yaw speed multiplier
+        local yawSpeedFactor = 0.1 --export: the auto yaw speed multiplier
         local yawAccelerationFactor = 3
         local lateralAntiDriftFactor = 1
         local lateralStrafeFactor = 5
@@ -281,7 +283,7 @@ local systemOnFlush = {
         local canBrake = false
 
         -- keeping the start position alignement
-        local StrafeSpeedFactor = 50 --export: useg to increase the force of the alignement, decrease the value if the alignement is too strong or increase it if it's too slow
+        local StrafeSpeedFactor = 1 --export: useg to increase the force of the alignement, decrease the value if the alignement is too strong or increase it if it's too slow
         local positionDifference = constructTargetPosition - constructWorldPosition
         local lateralOffset = positionDifference:project_on(constructRight):len() * utils.sign(positionDifference:dot(constructRight))
         ElevatorData.lateralSpeed = constructVelocity:project_on(worldRight):len()
@@ -623,4 +625,3 @@ Script.system:onInputText(function (text)
         system.print('Unknown command')
     end
 end)
-
