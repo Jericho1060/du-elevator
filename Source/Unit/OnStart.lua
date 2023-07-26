@@ -24,7 +24,7 @@ ShowControlUnitWidget = false --export: show the default widget of the construct
 --[[
     Version Management
 ]]
-local version = "V 1.1.1"
+local version = "V 1.1.2"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -101,6 +101,8 @@ ConstructInitPos = construct.getWorldPosition()
 --ConstructInitPos = {-1231538.185042, 1201297.6879598, -2617220.2766464}
 if __DEBUG then system.print('ConstructInitPos: ' .. json.encode(ConstructInitPos)) end
 BaseForward = vec3(construct.getWorldForward())
+--replace that pos by a hand written value to be sure the construct will always realign the same forward orientation
+--BaseForward = vec3({-0.085554607212543,0.2445342447567,-0.9658600687807})
 if __DEBUG then system.print('BaseForward: ' .. json.encode(BaseForward)) end
 BaseAltitute = Bookmarks[1].altitude --getting the base altitude from the 1st bookmark
 --init a value to store the target altitude
