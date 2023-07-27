@@ -6,13 +6,15 @@
     Bookmarks: you can store several altitudes here to navigate easily
 ]]
 local Bookmarks = {
-    { name = 'Start Point', altitude = 285 },
+    { name = 'Start Point', altitude = 294 },
     { name = 'Hovering', altitude = 300 },
     { name = 'Floor 1', altitude = 350 },
     { name = 'Floor 2', altitude = 500 },
     { name = 'Space 1', altitude = 5000 },
     { name = 'Space 2', altitude = 6000 },
 }
+
+atlas = require "atlas"
 
 --[[
     LUA PARAMETERS
@@ -98,7 +100,7 @@ end
 ]]
 ConstructInitPos = construct.getWorldPosition()
 --replace that pos by a hand written value to be sure the construct will always realign the same position
---ConstructInitPos = {-1231538.185042, 1201297.6879598, -2617220.2766464}
+--ConstructInitPos = {-1231461.6525868,1201334.4594833,-2617227.3718653}
 if __DEBUG then system.print('ConstructInitPos: ' .. json.encode(ConstructInitPos)) end
 BaseForward = vec3(construct.getWorldForward())
 --replace that pos by a hand written value to be sure the construct will always realign the same forward orientation
@@ -120,8 +122,7 @@ ElevatorData = {
 
 --TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
 MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
-if __DEBUG then system.print('MaxSpeed: ' .. MaxSpeed) end
-
+if __DEBUG then system.print('MaxSpeed: ' .. (MaxSpeed*3.6) .. 'km/h') end
 --base selected bookmark is 0 -> none selected as index 0 doesn't exist in lua
 selectedBookmarkIndex = 0
 
@@ -320,7 +321,13 @@ local systemOnFlush = {
         local brakeDistance = 0
         local maxBrake = construct.getMaxBrake()
         if maxBrake ~= nil then
-            brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, construct.getInertialMass(), 0, 0, maxBrake - (core.getGravityIntensity() * construct.getInertialMass()) * utils.sign(ElevatorData.verticalSpeedSigned))
+            local g = core.getGravityIntensity()
+            if ElevatorData.verticalSpeedSigned < 0 then
+                g = atlas[0][core.getCurrentPlanetId()].gravity --when falling, apply the max gravity to the braking computing to increase braking
+            end
+            local inertialMass = construct.getInertialMass()
+            local speedSign = utils.sign(ElevatorData.verticalSpeedSigned)
+            brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, inertialMass, 0, 0, maxBrake - (g * inertialMass * speedSign))
         end
         ElevatorData.altitude = core.getAltitude()
         local distance = TargetAltitude - ElevatorData.altitude
@@ -351,6 +358,12 @@ local systemOnFlush = {
                 or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
         then
             finalBrakeInput = 1
+            --use engines to help braking
+            if ElevatorData.verticalSpeedSigned < 0 then
+                Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, 1)
+            elseif ElevatorData.verticalSpeedSigned > 0 then
+                Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, -1)
+            end
         end
         ElevatorData.isBreaking = (finalBrakeInput == 1)
         local brakeAcceleration = -finalBrakeInput * (brakeSpeedFactor * constructVelocity + brakeFlatFactor * constructVelocityDir)
