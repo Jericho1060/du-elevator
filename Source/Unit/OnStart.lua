@@ -26,7 +26,7 @@ ShowControlUnitWidget = false --export: show the default widget of the construct
 --[[
     Version Management
 ]]
-local version = "V 1.1.2"
+local version = "V 1.1.3"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
