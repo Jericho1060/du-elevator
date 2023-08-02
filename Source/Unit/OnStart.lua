@@ -26,10 +26,17 @@ ShowControlUnitWidget = false --export: show the default widget of the construct
 --[[
     Version Management
 ]]
-local version = "V 1.1.3"
+local version = "V 1.2.0"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
+--[[
+    Lua Serializer by Jericho
+    Version: 1.0.0
+    Source available at: https://github.com/Jericho1060/DualUniverse/blob/master/Serializer/Serializer.lua
+]]
+Serializer={__index={stringify=function(self,a)if type(a)=='number'then return self:stringifyNumber(a)elseif type(a)=='string'then return self:stringifyString(a)elseif type(a)=='table'then return self:stringifyTable(a)elseif type(a)=='boolean'then return self:stringifyBoolean(a)end;return nil end,parse=function(self,b)return load("return "..b)()end,stringifyTableKey=function(self,c)if type(c)=='number'then return'['..self:stringifyNumber(c)..']'end;return c end,stringifyNumber=function(self,d)return tostring(d)end,stringifyString=function(self,b)return string.format('%q',b):gsub('\\\n','\n'):gsub('\\\r','\r'):gsub('\\\t','\t')end,stringifyTable=function(self,e)local b='{'local f=1;local g=self:tableLength(e)for h,i in pairs(e)do b=b..self:stringifyTableKey(h)..'='..self:stringify(i)if f<g then b=b..','end;f=f+1 end;return b..'}'end,stringifyBoolean=function(self,j)return tostring(j)end,tableLength=function(self,e)local k=0;for l in pairs(e)do k=k+1 end;return k end}}
+Serializer = setmetatable({}, Serializer)
 --[[
     Fuel Tanks Metatable By Jericho
     Version: 1.0.0
@@ -41,6 +48,7 @@ FuelTank={__index={name='',percentage=0,timeLeft=0,lastRefresh=0,fuelType='rocke
 ]]
 core = nil
 fuelTanks = {}
+databank = nil
 for slot_name, slot in pairs(unit) do
     if
     type(slot) == "table"
@@ -52,6 +60,8 @@ for slot_name, slot in pairs(unit) do
             core = slot
         elseif class:find("fuelcontainer") then
             fuelTanks[#fuelTanks + 1] = setmetatable(slot, FuelTank)
+        elseif class:find("databank") then
+            databank = slot
         end
     end
 end
@@ -98,14 +108,44 @@ end
 --[[
     Storing base position and orientation of the elevator
 ]]
-ConstructInitPos = construct.getWorldPosition()
---replace that pos by a hand written value to be sure the construct will always realign the same position
---ConstructInitPos = {-1231461.6525868,1201334.4594833,-2617227.3718653}
-if __DEBUG then system.print('ConstructInitPos: ' .. json.encode(ConstructInitPos)) end
-BaseForward = vec3(construct.getWorldForward())
---replace that pos by a hand written value to be sure the construct will always realign the same forward orientation
---BaseForward = vec3({-0.085554607212543,0.2445342447567,-0.9658600687807})
-if __DEBUG then system.print('BaseForward: ' .. json.encode(BaseForward)) end
+function storeIniPosAndForward(force)
+    if force == nil then force = false end
+    ConstructInitPos = construct.getWorldPosition()
+    --replace that pos by a hand written value to be sure the construct will always realign the same position
+    --ConstructInitPos = {-1231461.6525868,1201334.4594833,-2617227.3718653}
+    if __DEBUG then system.print('ConstructInitPos: ' .. json.encode(ConstructInitPos)) end
+    BaseForward = construct.getWorldForward()
+    --replace that pos by a hand written value to be sure the construct will always realign the same forward orientation
+    --BaseForward = {-0.085554607212543,0.2445342447567,-0.9658600687807}
+    if __DEBUG then system.print('BaseForward: ' .. json.encode(BaseForward)) end
+    if databank ~= nil then
+        if databank.hasKey('ConstructInitPos') and not force then
+            BaseForward = Serializer:parse(databank.getStringValue('ConstructInitPos'))
+        else
+            local toStore = Serializer:stringify(ConstructInitPos)
+            databank.setStringValue('ConstructInitPos', toStore)
+            system.print("ConstructInitPos stored in databank")
+            system.print(toStore)
+        end
+        if databank.hasKey('BaseForward') and not force then
+            BaseForward = Serializer:parse(databank.getStringValue('BaseForward'))
+        else
+            local toStore = Serializer:stringify(BaseForward)
+            databank.setStringValue('BaseForward', toStore)
+            system.print("BaseForward stored in databank")
+            system.print(toStore)
+        end
+    else
+        system.print("No Databank detected")
+    end
+    BaseForward = vec3(BaseForward)
+end
+ConstructInitPos = nil
+BaseForward = nil
+storeIniPosAndForward()
+if ConstructInitPos == nil or BaseForward == nil then
+    system.print("An Error occurs during Init. Try removing the databank, remove its dynamic properties and install it again ...")
+end
 BaseAltitute = Bookmarks[1].altitude --getting the base altitude from the 1st bookmark
 --init a value to store the target altitude
 TargetAltitude = core.getAltitude() --by default to the start altitude to avoid falling down if in the air
@@ -624,6 +664,9 @@ systemActionsStart[Script.system.ACTIONS.STRAFE_RIGHT] =  function ()
     else
         system.print('No bookmark selected')
     end
+end
+systemActionsStart[Script.system.ACTIONS.OPTION_1] = function()
+    storeIniPosAndForward(true)
 end
 Script.system:onActionStart(systemActionsStart) --loading all "actionStart" functions
 

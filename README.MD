@@ -66,6 +66,10 @@ Current selected bookmark is displayed in blue, the current bookmark the elevato
 
 - open the "lua" chat channel and type `goto:<altitude>` to go to the specified altitude with `<altitude>` the altitude in meters, if the altitude is missing or invalid, it will send you the `BaseAltitude`
 
+### Other keys
+
+- Option 1 (default Alt+1): save the current position and orientation as initial values in the databank
+
 # Coming Soon
 
 - support for emitter to be able to send a signal to a specific channel to close a door to lock the elevator in position
