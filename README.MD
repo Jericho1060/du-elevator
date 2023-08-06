@@ -25,6 +25,7 @@ You can join me on Discord for help or suggestions or requests by following that
 You must link the following elements to the remote control (order doesn't matter, the script will detect them automatically):
 - Link the core to the remote control
 - Link the fuel tank to the remote control (only if you want to see the fuel gauge)
+- Link the databank to the remote control (not required bu will imporved the alignement of the construct when landing)
 
 ## Setup
 
