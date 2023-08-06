@@ -49,6 +49,7 @@ You may need to adjust the power depending on the weight of your construct and o
 - `ShowControlUnitWidget` : if set to true, the script will display the default control unit widget
 - `YawSpeedFactor` : the speed multiplier for auto yaw.
 - `StrafeSpeedFactor` : the speed multiplier when strafing. adjust it depending on how many engines you have on the sides
+- `DisplayAtlasData` : show the Atlas widget with closest planet informations
 
 ## Usage
 
@@ -70,10 +71,34 @@ Current selected bookmark is displayed in blue, the current bookmark the elevato
 
 - Option 1 (default Alt+1): save the current position and orientation as initial values in the databank
 
+# Customize the HUD
+
+This is script is build to be customizable. A function rendering the HUD can be replaced by your own rendering to add informations on the HUD.
+
+## How to customize the HUD
+
+In Unit > OnStart, around line 28, you will fin a method name RENDER_HUD. This method is called every frame to render the HUD.
+
+You can replace its content by your own code to render your own HUD.
+
+The method has one argument named ElevatorData which is a table containing all the informations you need to render your HUD.
+
+### ElevatorData structure
+| Name | Type | Description |
+| --- | --- | --- |
+| ElevatorData.isBreaking | boolean | if the brakes a are enabled or not. |
+| ElevatorData.verticalSpeed | number | the absolute vertical speed of the elevator in m/s. |
+| ElevatorData.verticalSpeedSigned | number | the real vertical speed of the elevator in m/s. if <0 the elevator is falling. |
+| ElevatorData.lateralSpeed | numver | the absolute lateral speed of the elevator in m/s. |
+| ElevatorData.longitudinalSpeed | number | the absolute Longitudinal speed of the elevator in m/s. |
+| ElevatorData.coreAltitude | number | the altitude from sea level returned by the core in meters. (warning: this altitude in space when far from planets is 0) |
+| ElevatorData.altitude | number | computed altitude from the distance between the construct and the sea level of the closest planet. (not 0 when in space) |
+| ElevatorData.planetData | table | Atlas Data of the closest planet. See atlas in game file for the structure (Game Directory\data\lua\atlas.lua) |
+
 # Coming Soon
 
-- support for emitter to be able to send a signal to a specific channel to close a door to lock the elevator in position
 - screen support to display position informations and bookmarks and navigate by clicking on it
+- ~~support for emitter to be able to send a signal to a specific channel to close a door to lock the elevator in position~~ This feature will not be done but replaced by a more generic system to manage several events than can be used to interact with any thing in the construct (doors, lights, etc...) or on another construct (like a door on the floor) via an emitter.
 
 # Support or donation
 

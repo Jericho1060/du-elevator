@@ -14,19 +14,213 @@ local Bookmarks = {
     { name = 'Space 2', altitude = 6000 },
 }
 
-atlas = require "atlas"
-
 --[[
     LUA PARAMETERS
 ]]
 __DEBUG = false --export: Debug mode, will print more information in the console
 ShowParentingWidget = false --export: Show the parenting widget
 ShowControlUnitWidget = false --export: show the default widget of the construct
+DisplayAtlasData = true --export: show the Atlas widget with closest planet informations
+
+--[[
+    HUD Rendering
+]]
+function RENDER_HUD(ElevatorData)
+    --[[
+        That function is used for rendering the HUD,
+        You can update it or replace all its content to customise it.
+        You can also remove its content if you don't want a HUD.
+        It's not affecting in any way how the elevator is working and it's just a display
+        
+        ElevatorData is an object containing values that are refresh all the time.
+        ElevatorData.isBreaking - boolean - if the brakes a are enabled or not.
+        ElevatorData.verticalSpeed - number - the absolute vertical speed of the elevator in m/s.
+        ElevatorData.verticalSpeedSigned - number - the real vertical speed of the elevator in m/s. if <0 the elevator is falling.
+        ElevatorData.lateralSpeed - numver - the absolute lateral speed of the elevator in m/s.
+        ElevatorData.longitudinalSpeed - number - the absolute Longitudinal speed of the elevator in m/s.
+        ElevatorData.coreAltitude - number - the altitude from sea level returned by the core in meters. (warning: this altitude in space when far from planets is 0)
+        ElevatorData.altitude - number - computed altitude from the distance between the construct and the sea level of the closest planet. (not 0 when in space)
+        ElevatorData.planetData - table - Atlas Data of the closest planet. See atlas in game file for the structure (Game Directory\data\lua\atlas.lua)
+    ]]
+    --locale for Translation
+    local locale = system.getLocale()
+    localeIndex = 1 --default to english
+    if locale == 'fr-FR' then
+        localeIndex = 2 --french index in atlas
+    elseif locale == 'de-DE' then
+        localeIndex = 3 --german index in atlas
+    end
+    --direction if the elevator from the speed
+    local direction = 'Stabilizing'
+    if ElevatorData.verticalSpeedSigned > 0 then
+        direction = 'Up'
+    elseif ElevatorData.verticalSpeedSigned < 0 then
+        direction = 'Down'
+    end
+    --braking status text for hud
+    local brakeStatus = 'Off'
+    if ElevatorData.isBreaking then
+        brakeStatus = 'On'
+    end
+    --html rendering
+    local html = [[
+        <style>
+            * {font-size:1vh !important;}
+            .hud {
+                position: absolute;
+                left: 5vh;
+                top: 5vh;
+                right: 5vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: left;
+                align-items: left;
+            }
+            .widget_container {
+                border: 2px solid orange;
+                border-radius:.5vh;
+                background-color: rgba(0, 0, 0, .5);
+                display: flex;
+                flex-direction: column;
+                padding:.5vh;
+                margin-top:1vh;
+            }
+            .widget_container div {
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+            }
+            .widget_container div div {
+                margin:.25vh;
+            }
+            .widget_container div div:first-child {
+                text-transform: uppercase;
+                font-weight: bold;
+            }
+            .selected {
+                color: teal;
+            }
+            .movingto {
+                color: green;
+            }
+            .atmo .gauge {
+                background-color: #22d3ee;
+            }
+            .atmo .gauge_label {
+                color: #155e75;
+            }
+            .space .gauge {
+                background-color: #fbbf24;
+            }
+            .space .gauge_label {
+                color: #92400e;
+            }
+            .rocket .gauge {
+                background-color: #a78bfa;
+            }
+            .rocket .gauge_label {
+                color: #5b21b6;
+            }
+            .gauge_container {
+                display:block;
+                width:100%;
+                min-width:10vw;
+                position: relative;
+                border: 1px solid black;
+                background-color: rgba(0, 0, 0, .75);
+                height: 1.5vh;
+            }
+            .gauge {
+                position: absolute;
+                z-index:1;
+                top:-.25vh;
+                left:-.25vh;
+                height:100%;
+                margin:0;
+                background-color: cyan;
+            }
+            .gauge_label {
+                position:relative;
+                display:block;
+                z-index:10;
+                margin:0;
+                padding:0;
+                width:100%;
+                text-align:center;
+            }
+        </style>
+        <div class="hud">
+            <div class="widget_container">
+                <div>
+                    <div>Base Altitude</div><div>]] .. format_number(utils.round(BaseAltitute)) .. [[m</div>
+                </div>
+                <div>
+                    <div>Target Altitude</div><div>]] .. format_number(utils.round(TargetAltitude)) .. [[m</div>
+                </div>
+                <div>
+                    <div>Current Altitude</div><div>]] .. format_number(utils.round(ElevatorData.altitude)) .. [[m</div>
+                </div>
+                <div>
+                    <div>Vertical Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.verticalSpeed*3.6))) .. [[km/h</div>
+                </div>
+                <div>
+                    <div>Lateral Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.lateralSpeed*3.6))) .. [[km/h</div>
+                </div>
+                <div>
+                    <div>Longitudinal Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.longitudinalSpeed*3.6))) .. [[km/h</div>
+                </div>
+                <div>
+                    <div>Direction</div><div>]] .. ElevatorData.direction .. [[</div>
+                </div>
+                <div>
+                    <div>Brake</div><div>]] .. brakeStatus .. [[</div>
+                </div>
+            </div>
+    ]]
+    if #fuelTanks > 0 then
+        html = html .. '<div class="widget_container">'
+        for _, tank in pairs(fuelTanks) do
+            html = html .. '<div><div>' .. tank:getName() .. '</div><div>' .. tank:getTimeLeftString() .. '</div></div><div class="gauge_container ' .. tank:getFuelType() .. '"><div class="gauge" style="width:' .. utils.round(tank:getPercentFilled()) .. '%;"></div><div class="gauge_label"><div style="margin-left:auto;margin-right:auto;padding:0;margin-top:-.25vh;">' .. format_number(utils.round(tank:getPercentFilled())) .. '%</div></div></div>'
+        end
+        html = html .. '</div>'
+    end
+    if #Bookmarks > 0 then
+        html = html .. '<div class="widget_container"><div><div style="text-align:center !important;border-bottom:1px solid black;width:100%;">Bookmarks</div></div>'
+        for index, bookmark in ipairs(Bookmarks) do
+            local class=''
+            if selectedBookmarkIndex == index then
+                class = 'selected'
+            end
+            local displayName = bookmark.name
+            if selectedBookmarkIndex > 0 and bookmark.altitude == TargetAltitude then
+                displayName = ' >> ' .. bookmark.name
+                class = 'movingto'
+            end
+            html = html .. '<div class="' .. class .. '"><div>' .. displayName .. '</div><div>' .. format_number(bookmark.altitude) .. 'm</div></div>'
+        end
+        html = html .. '</div>'
+    end
+    if DisplayAtlasData then
+        html = html .. '<div class="widget_container">'
+        html = html .. '<div><div style="text-align:center;border-bottom:1px solid black;width:100%;">Atlas Data</div></div>'
+        --html = html .. '<div><img src="/'..ElevatorData.planetData.iconPath..'" style="width:10vh;height:10vh;"></div>' --image is blinking in hud, you can display it here but by default i'm removing it
+        html = html .. '<div><div>Planet Name</div><div>'..ElevatorData.planetData.name[localeIndex]..'</div></div>'
+        html = html .. '<div><div>Planet Type</div><div>'..ElevatorData.planetData.type[localeIndex]..'</div></div>'
+        html = html .. '<div><div>Planet gravity</div><div>'..ElevatorData.planetData.gravity..'m/s²</div></div>'
+        html = html .. '<div><div>Planet Surface Average Altitude</div><div>'..ElevatorData.planetData.surfaceAverageAltitude..'m</div></div>'
+        html = html .. '<div><div>Planet Surface Min Altitude</div><div>'..ElevatorData.planetData.surfaceMinAltitude..'m</div></div>'
+        html = html .. '<div><div>Planet Surface Max Altitude</div><div>'..ElevatorData.planetData.surfaceMaxAltitude..'m</div></div>'
+        html = html .. '<div><div>Planet Max Altitude For Satic Core</div><div>'..ElevatorData.planetData.maxStaticAltitude..'m</div></div>'
+        html = html .. '</div>'
+    end
+    html = html .. '</div>'
+    system.setScreen(html) --render the HUD
+end
 
 --[[
     Version Management
 ]]
-local version = "V 1.2.0"
+local version = "V 1.3.0"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -73,6 +267,11 @@ if core == nil then
     system.print('Core unit is not linked, exiting the script')
     unit.exit()
 end
+
+--[[
+    Atlas
+]]
+atlas = require"atlas"
 
 --[[
     Default Unit Start Mechanics
@@ -156,8 +355,9 @@ ElevatorData = {
     verticalSpeedSigned = 0,
     lateralSpeed = 0,
     longitudinalSpeed = 0,
+    coreAltitude = TargetAltitude,
     altitude = TargetAltitude,
-    direction = 'stabilizing',
+    planetData = atlas[0][core.getCurrentPlanetId()]
 }
 
 --TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
@@ -363,13 +563,14 @@ local systemOnFlush = {
         if maxBrake ~= nil then
             local g = core.getGravityIntensity()
             if ElevatorData.verticalSpeedSigned < 0 then
-                g = atlas[0][core.getCurrentPlanetId()].gravity --when falling, apply the max gravity to the braking computing to increase braking
+                g = ElevatorData.planetData.gravity --when falling, apply the max gravity to the braking computing to increase braking
             end
             local inertialMass = construct.getInertialMass()
             local speedSign = utils.sign(ElevatorData.verticalSpeedSigned)
             brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, inertialMass, 0, 0, maxBrake - (g * inertialMass * speedSign))
         end
-        ElevatorData.altitude = core.getAltitude()
+        ElevatorData.coreAltitude = core.getAltitude()
+        ElevatorData.altitude = (vec3(ElevatorData.planetData.center) - vec3(constructWorldPosition)):len() - ElevatorData.planetData.radius
         local distance = TargetAltitude - ElevatorData.altitude
         local targetDistance = utils.sign(distance) * (math.abs(distance)-brakeDistance)
         distancePID:inject(targetDistance)
@@ -473,162 +674,7 @@ local systemOnFlush = {
 local systemOnUpdate = {
     function ()
         Nav:update()
-    end,
-    function ()
-        --That function is used for rendering the HUD, you can update it or replace all its content to customise it. You can also remove it if you don't want a HUD
-        local direction = 'Stabilizing'
-        if ElevatorData.verticalSpeedSigned > 0 then
-            direction = 'Up'
-        elseif ElevatorData.verticalSpeedSigned < 0 then
-            direction = 'Down'
-        end
-
-        local brakeStatus = 'Off'
-        if ElevatorData.isBreaking then
-            brakeStatus = 'On'
-        end
-        local html = [[
-            <style>
-                * {
-                    font-size:1vh !important;
-                }
-                .hud {
-                    position: absolute;
-                    left: 5vh;
-                    top: 5vh;
-                    right: 5vh;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: left;
-                    align-items: left;
-                }
-                .widget_container {
-                    border: 2px solid orange;
-                    border-radius:.5vh;
-                    background-color: rgba(0, 0, 0, .5);
-                    display: flex;
-                    flex-direction: column;
-                    padding:.5vh;
-                    margin-top:1vh;
-                }
-                .widget_container div {
-                    display: flex;
-                    flex-direction: row;
-                    justify-content: space-between;
-                }
-                .widget_container div div {
-                    margin:.25vh;
-                }
-                .widget_container div div:first-child {
-                    text-transform: uppercase;
-                    font-weight: bold;
-                }
-                .selected {
-                    color: teal;
-                }
-                .movingto {
-                    color: green;
-                }
-                .atmo .gauge {
-                    background-color: #22d3ee;
-                }
-                .atmo .gauge_label {
-                    color: #155e75;
-                }
-                .space .gauge {
-                    background-color: #fbbf24;
-                }
-                .space .gauge_label {
-                    color: #92400e;
-                }
-                .rocket .gauge {
-                    background-color: #a78bfa;
-                }
-                .rocket .gauge_label {
-                    color: #5b21b6;
-                }
-                .gauge_container {
-                    display:block;
-                    width:100%;
-                    min-width:10vw;
-                    position: relative;
-                    border: 1px solid black;
-                    background-color: rgba(0, 0, 0, .75);
-                    height: 1.5vh;
-                }
-                .gauge {
-                    position: absolute;
-                    z-index:1;
-                    top:-.25vh;
-                    left:-.25vh;
-                    height:100%;
-                    margin:0;
-                    background-color: cyan;
-                }
-                .gauge_label {
-                    position:relative;
-                    display:block;
-                    z-index:10;
-                    margin:0;
-                    padding:0;
-                    width:100%;
-                    text-align:center;
-                }
-            </style>
-            <div class="hud">
-                <div class="widget_container">
-                    <div>
-                        <div>Base Altitude</div><div>]] .. format_number(utils.round(BaseAltitute)) .. [[m</div>
-                    </div>
-                    <div>
-                        <div>Target Altitude</div><div>]] .. format_number(utils.round(TargetAltitude)) .. [[m</div>
-                    </div>
-                    <div>
-                        <div>Current Altitude</div><div>]] .. format_number(utils.round(ElevatorData.altitude)) .. [[m</div>
-                    </div>
-                    <div>
-                        <div>Vertical Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.verticalSpeed*3.6))) .. [[km/h</div>
-                    </div>
-                    <div>
-                        <div>Lateral Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.lateralSpeed*3.6))) .. [[km/h</div>
-                    </div>
-                    <div>
-                        <div>Longitudinal Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.longitudinalSpeed*3.6))) .. [[km/h</div>
-                    </div>
-                    <div>
-                        <div>Direction</div><div>]] .. ElevatorData.direction .. [[</div>
-                    </div>
-                    <div>
-                        <div>Brake</div><div>]] .. brakeStatus .. [[</div>
-                    </div>
-                </div>
-        ]]
-        if #fuelTanks > 0 then
-            html = html .. '<div class="widget_container">'
-            for _, tank in pairs(fuelTanks) do
-                html = html .. '<div><div>' .. tank:getName() .. '</div><div>' .. tank:getTimeLeftString() .. '</div></div><div class="gauge_container ' .. tank:getFuelType() .. '"><div class="gauge" style="width:' .. utils.round(tank:getPercentFilled()) .. '%;"></div><div class="gauge_label"><div style="margin-left:auto;margin-right:auto;padding:0;margin-top:-.25vh;">' .. format_number(utils.round(tank:getPercentFilled())) .. '%</div></div></div>'
-            end
-            html = html .. '</div>'
-        end
-        if #Bookmarks > 0 then
-            html = html .. '<div class="widget_container"><div><div>Bookmarks</div></div>'
-            for index, bookmark in ipairs(Bookmarks) do
-                local class=''
-                if selectedBookmarkIndex == index then
-                    class = 'selected'
-                end
-                local displayName = bookmark.name
-                if selectedBookmarkIndex > 0 and bookmark.altitude == TargetAltitude then
-                    displayName = ' >> ' .. bookmark.name
-                    class = 'movingto'
-                end
-                html = html .. '<div class="' .. class .. '"><div>' .. displayName .. '</div><div>' .. format_number(bookmark.altitude) .. 'm</div></div>'
-            end
-            html = html .. '</div>'
-        end
-
-        html = html .. '</div>'
-        system.setScreen(html)
+        RENDER_HUD(ElevatorData)
     end
 }
 
