@@ -12,6 +12,10 @@ local Bookmarks = {
     { name = 'Floor 2', altitude = 500 },
     { name = 'Space 1', altitude = 5000 },
     { name = 'Space 2', altitude = 6000 },
+    { name = 'Space 3', altitude = 10000 },
+    { name = 'Space 4', altitude = 20000 },
+    { name = 'Space 5', altitude = 50000 },
+    { name = 'Space 6', altitude = 200000 },
 }
 
 --[[
@@ -159,6 +163,12 @@ function RENDER_HUD(ElevatorData)
                 </div>
                 <div>
                     <div>Current Altitude</div><div>]] .. format_number(utils.round(ElevatorData.altitude)) .. [[m</div>
+                </div>
+                <div>
+                    <div>Atmosphere Altitude</div><div>]] .. format_number(utils.round(ElevatorData.atmosphereDistance)) .. [[m</div>
+                </div>
+                <div>
+                    <div>Maximum Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.currentMaxSpeed*3.6))) .. [[km/h</div>
                 </div>
                 <div>
                     <div>Vertical Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.verticalSpeed*3.6))) .. [[km/h</div>
@@ -364,6 +374,13 @@ function storeReferencePlanet(force)
 end
 
 --[[
+    Compute planet atmosphere altitude
+]]
+function computePlanetAtmoAltitude(planetData)
+    return planetData.atmosphereRadius - planetData.radius
+end
+
+--[[
     --compute distance from a planet sea level
 ]]
 function computePlanetSeaDistance(planetData, constructWorldPosition)
@@ -380,6 +397,10 @@ BaseAltitute = Bookmarks[1].altitude --getting the base altitude from the 1st bo
 --init a value to store the target altitude
 TargetAltitude = core.getAltitude() --by default to the start altitude to avoid falling down if in the air
 
+MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
+MaxSpeedOnPlanet = MaxSpeed
+if __DEBUG then system.print('MaxSpeed: ' .. (MaxSpeed*3.6) .. 'km/h') end
+
 ElevatorData = {
     isBreaking = brakeInput == 1,
     verticalSpeed = 0,
@@ -389,7 +410,11 @@ ElevatorData = {
     coreAltitude = TargetAltitude,
     altitude = TargetAltitude,
     planetData = nil,
-    direction = 'Stabilizing'
+    direction = 'Stabilizing',
+    atmosphereDistance = 0,
+    atmosphereAltitude = 0,
+    atmoMaxSpeed = MaxSpeedOnPlanet,
+    currentMaxSpeed = MaxSpeed,
 }
 
 storeReferencePlanet(false)
@@ -397,11 +422,9 @@ storeReferencePlanet(false)
 --computing the distance from the planet sea level as target altitude
 if ElevatorData.planetData ~= nil then
     TargetAltitude = computePlanetSeaDistance(ElevatorData.planetData, construct.getWorldPosition())
+    ElevatorData.atmosphereAltitude = computePlanetAtmoAltitude(ElevatorData.planetData)
 end
 
---TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
-MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
-if __DEBUG then system.print('MaxSpeed: ' .. (MaxSpeed*3.6) .. 'km/h') end
 --base selected bookmark is 0 -> none selected as index 0 doesn't exist in lua
 selectedBookmarkIndex = 0
 
@@ -598,7 +621,14 @@ local systemOnFlush = {
         ElevatorData.verticalSpeed = constructVelocity:project_on(worldVertical):len()
         ElevatorData.verticalSpeedSigned = ElevatorData.verticalSpeed * -utils.sign(constructVelocity:dot(worldVertical))
         local brakeDistance = 0
+        local brakeDistanceToAtmosphere = 0
         local maxBrake = construct.getMaxBrake()
+        ElevatorData.coreAltitude = core.getAltitude()
+        ElevatorData.atmosphereAltitude = computePlanetAtmoAltitude(ElevatorData.planetData)
+        ElevatorData.altitude = computePlanetSeaDistance(ElevatorData.planetData, constructWorldPosition)
+        ElevatorData.atmosphereDistance = ElevatorData.altitude - ElevatorData.atmosphereAltitude
+        local isInAtmosphere = ElevatorData.atmosphereDistance <= 0
+        local targetIsInAtmosphere = TargetAltitude <= ElevatorData.atmosphereDistance
         if maxBrake ~= nil then
             local g = core.getGravityIntensity()
             if ElevatorData.verticalSpeedSigned < 0 then
@@ -606,10 +636,14 @@ local systemOnFlush = {
             end
             local inertialMass = construct.getInertialMass()
             local speedSign = utils.sign(ElevatorData.verticalSpeedSigned)
+            brakeDistanceToAtmosphere, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, ElevatorData.atmoMaxSpeed, inertialMass, 0, 0, maxBrake - (g * inertialMass * speedSign))
             brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, inertialMass, 0, 0, maxBrake - (g * inertialMass * speedSign))
         end
-        ElevatorData.coreAltitude = core.getAltitude()
-        ElevatorData.altitude = computePlanetSeaDistance(ElevatorData.planetData, constructWorldPosition)
+        if isInAtmosphere or (targetIsInAtmosphere and (brakeDistanceToAtmosphere > ElevatorData.atmosphereDistance)) then
+            ElevatorData.currentMaxSpeed = ElevatorData.atmoMaxSpeed
+        else
+            ElevatorData.currentMaxSpeed = 50000/3.6 -- 50km/h in m/s = 13888.88888888889....
+        end
         local distance = TargetAltitude - ElevatorData.altitude
         local targetDistance = utils.sign(distance) * (math.abs(distance)-brakeDistance)
         distancePID:inject(targetDistance)
