@@ -71,6 +71,7 @@ Current selected bookmark is displayed in blue, the current bookmark the elevato
 ### Other keys
 
 - Option 1 (default Alt+1): save the current position and orientation as initial values in the databank
+- Option 2 (default Alt+2): save the current planet id in the databank (used to compute distance and positions when really far from the planet)
 
 # Customize the HUD
 

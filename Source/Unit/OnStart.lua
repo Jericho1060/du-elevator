@@ -200,7 +200,7 @@ function RENDER_HUD(ElevatorData)
         end
         html = html .. '</div>'
     end
-    if DisplayAtlasData then
+    if DisplayAtlasData and (ElevatorData.planetData ~= nil) then
         html = html .. '<div class="widget_container">'
         html = html .. '<div><div style="text-align:center;border-bottom:1px solid black;width:100%;">Atlas Data</div></div>'
         --html = html .. '<div><img src="/'..ElevatorData.planetData.iconPath..'" style="width:10vh;height:10vh;"></div>' --image is blinking in hud, you can display it here but by default i'm removing it
@@ -220,7 +220,7 @@ end
 --[[
     Version Management
 ]]
-local version = "V 1.3.0"
+local version = "V 1.3.1"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -339,6 +339,30 @@ function storeIniPosAndForward(force)
     end
     BaseForward = vec3(BaseForward)
 end
+
+--[[
+    Storing Planet ID in Databank to be sure we always have the origin planet store even where too far from planet (1su or more)
+]]
+function storeReferencePlanet(force)
+    if force == nil then force = false end
+    local PlanetID = nil
+    if databank.hasKey('PlanetID') and not force then
+        PlanetID = databank.getIntValue('PlanetID')
+    else
+        PlanetID = core.getCurrentPlanetId()
+        if PlanetID ~= nil then
+            databank.setIntValue('PlanetID', PlanetID)
+            system.print("Planet ID stored in databank: " .. PlanetID)
+        end
+    end
+    if PlanetID == nil then
+        system.print("WARNING: no planet detected, you may be too far away in spance, please, restart the elevator from the planet surface")
+    else
+        ElevatorData.planetData = atlas[0][PlanetID]
+    end
+    if __DEBUG then system.print('Planet ID: ' .. PlanetID) end
+end
+
 ConstructInitPos = nil
 BaseForward = nil
 storeIniPosAndForward()
@@ -357,8 +381,12 @@ ElevatorData = {
     longitudinalSpeed = 0,
     coreAltitude = TargetAltitude,
     altitude = TargetAltitude,
-    planetData = atlas[0][core.getCurrentPlanetId()]
+    planetData = nil
 }
+
+storeReferencePlanet(false)
+
+
 
 --TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
 MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
@@ -713,6 +741,9 @@ systemActionsStart[Script.system.ACTIONS.STRAFE_RIGHT] =  function ()
 end
 systemActionsStart[Script.system.ACTIONS.OPTION_1] = function()
     storeIniPosAndForward(true)
+end
+systemActionsStart[Script.system.ACTIONS.OPTION_2] = function()
+    storeReferencePlanet(true)
 end
 Script.system:onActionStart(systemActionsStart) --loading all "actionStart" functions
 
