@@ -627,18 +627,15 @@ local systemOnFlush = {
             end
         else
             Nav.axisCommandManager:resetCommand(axisCommandId.vertical)
-            if (math.abs(distancePID:get()) < .25) and canBrake then
-                finalBrakeInput = 1
-            end
             ElevatorData.direction = 'stabilizing'
         end
 
         --Brakes
-        if
-        (math.abs(distance) < (ElevatorData.verticalSpeed*3.6) and canBrake)
-                or (ElevatorData.verticalSpeed >= MaxSpeed)
-                or ((brakeDistance > math.abs(distance)) and canBrake)
-                or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
+        if (math.abs(distance) < (ElevatorData.verticalSpeed*3.6) and canBrake) --speed control
+            or (ElevatorData.verticalSpeed >= MaxSpeed) --anti burn speed
+            or ((math.abs(distancePID:get()) < .25) and canBrake) --altitude reached with 0.25m deadband
+            or ((brakeDistance > math.abs(distance)) and canBrake) --braking distance
+            or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
         then
             finalBrakeInput = 1
             --use engines to help braking
