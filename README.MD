@@ -95,6 +95,10 @@ The method has one argument named ElevatorData which is a table containing all t
 | ElevatorData.longitudinalSpeed | number | the absolute Longitudinal speed of the elevator in m/s. |
 | ElevatorData.coreAltitude | number | the altitude from sea level returned by the core in meters. (warning: this altitude in space when far from planets is 0) |
 | ElevatorData.altitude | number | computed altitude from the distance between the construct and the sea level of the closest planet. (not 0 when in space) |
+| ElevatorData.atmosphereDistance | number | computed distance from the construct to the atmosphere of the closest planet |
+| ElevatorData.atmosphereAltitude | number | computed altitude of the atmosphere of the closest planet |
+| ElevatorData.atmoMaxSpeed | number | the maximum speed of the elevator in m/s when in atmosphere. (anti burn security) |
+| ElevatorData.currentMaxSpeed | number | the maximum speed of the elevator in m/s. (50km/h in space) |
 | ElevatorData.planetData | table | Atlas Data of the closest planet. See atlas in game file for the structure (Game Directory\data\lua\atlas.lua) |
 
 # Coming Soon

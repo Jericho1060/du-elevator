@@ -44,6 +44,10 @@ function RENDER_HUD(ElevatorData)
         ElevatorData.longitudinalSpeed - number - the absolute Longitudinal speed of the elevator in m/s.
         ElevatorData.coreAltitude - number - the altitude from sea level returned by the core in meters. (warning: this altitude in space when far from planets is 0)
         ElevatorData.altitude - number - computed altitude from the distance between the construct and the sea level of the closest planet. (not 0 when in space)
+        ElevatorData.atmosphereDistance - number - computed distance from the construct to the atmosphere of the closest planet
+        ElevatorData.atmosphereAltitude - number - computed altitude of the atmosphere of the closest planet.
+        ElevatorData.atmoMaxSpeed - number - the maximum speed of the elevator in m/s when in atmosphere. (anti burn security)
+        ElevatorData.currentMaxSpeed - number - the maximum speed of the elevator in m/s. (50km/h in space)
         ElevatorData.planetData - table - Atlas Data of the closest planet. See atlas in game file for the structure (Game Directory\data\lua\atlas.lua)
     ]]
     --locale for Translation
@@ -230,7 +234,7 @@ end
 --[[
     Version Management
 ]]
-local version = "V 1.3.2"
+local version = "V 1.3.3"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -276,6 +280,9 @@ end
 if core == nil then
     system.print('Core unit is not linked, exiting the script')
     unit.exit()
+end
+if databank == nil then
+    system.print('Databank is not linked')
 end
 
 --[[
@@ -329,7 +336,8 @@ function storeIniPosAndForward(force)
     if __DEBUG then system.print('BaseForward: ' .. json.encode(BaseForward)) end
     if databank ~= nil then
         if databank.hasKey('ConstructInitPos') and not force then
-            BaseForward = Serializer:parse(databank.getStringValue('ConstructInitPos'))
+            ConstructInitPos = Serializer:parse(databank.getStringValue('ConstructInitPos'))
+            system.print("ConstructInitPos loaded from databank")
         else
             local toStore = Serializer:stringify(ConstructInitPos)
             databank.setStringValue('ConstructInitPos', toStore)
@@ -338,6 +346,7 @@ function storeIniPosAndForward(force)
         end
         if databank.hasKey('BaseForward') and not force then
             BaseForward = Serializer:parse(databank.getStringValue('BaseForward'))
+            system.print("BaseForward loaded from databank")
         else
             local toStore = Serializer:stringify(BaseForward)
             databank.setStringValue('BaseForward', toStore)
@@ -628,7 +637,7 @@ local systemOnFlush = {
         ElevatorData.altitude = computePlanetSeaDistance(ElevatorData.planetData, constructWorldPosition)
         ElevatorData.atmosphereDistance = ElevatorData.altitude - ElevatorData.atmosphereAltitude
         local isInAtmosphere = ElevatorData.atmosphereDistance <= 0
-        local targetIsInAtmosphere = TargetAltitude <= ElevatorData.atmosphereDistance
+        local targetIsInAtmosphere = TargetAltitude <= ElevatorData.atmosphereAltitude
         if maxBrake ~= nil then
             local g = core.getGravityIntensity()
             if ElevatorData.verticalSpeedSigned < 0 then
@@ -647,13 +656,13 @@ local systemOnFlush = {
         local distance = TargetAltitude - ElevatorData.altitude
         local targetDistance = utils.sign(distance) * (math.abs(distance)-brakeDistance)
         distancePID:inject(targetDistance)
-        if distancePID:get() > 0.25 or ElevatorData.verticalSpeedSigned < -MaxSpeed then --using a 0.25 meter deadband for stabilizing
+        if distancePID:get() > 0.25 or ElevatorData.verticalSpeedSigned < -ElevatorData.currentMaxSpeed then --using a 0.25 meter deadband for stabilizing
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, 1)
             ElevatorData.direction = 'up'
             if ElevatorData.verticalSpeedSigned < 0 then
                 finalBrakeInput = 1
             end
-        elseif distancePID:get() < -0.25 or ElevatorData.verticalSpeedSigned > MaxSpeed then
+        elseif distancePID:get() < -0.25 or ElevatorData.verticalSpeedSigned > ElevatorData.currentMaxSpeed then
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, -1)
             ElevatorData.direction = 'down'
             if ElevatorData.verticalSpeedSigned > 0 then
@@ -666,7 +675,7 @@ local systemOnFlush = {
 
         --Brakes
         if (math.abs(distance) < (ElevatorData.verticalSpeed*3.6) and canBrake) --speed control
-            or (ElevatorData.verticalSpeed >= MaxSpeed) --anti burn speed
+            or (ElevatorData.verticalSpeed >= ElevatorData.currentMaxSpeed) --anti burn speed
             or ((math.abs(distancePID:get()) < .25) and canBrake) --altitude reached with 0.25m deadband
             or ((brakeDistance > math.abs(distance)) and canBrake) --braking distance
             or (finalBrakeInput == 0 and autoBrakeSpeed > 0 and Nav.axisCommandManager.throttle == 0 and constructVelocity:len() < autoBrakeSpeed)
