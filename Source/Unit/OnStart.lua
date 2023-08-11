@@ -169,7 +169,7 @@ function RENDER_HUD(ElevatorData)
                     <div>Current Altitude</div><div>]] .. format_number(utils.round(ElevatorData.altitude)) .. [[m</div>
                 </div>
                 <div>
-                    <div>Atmosphere Altitude</div><div>]] .. format_number(utils.round(ElevatorData.atmosphereDistance)) .. [[m</div>
+                    <div>Atmosphere Distance</div><div>]] .. format_number(utils.round(ElevatorData.atmosphereDistance)) .. [[m</div>
                 </div>
                 <div>
                     <div>Maximum Speed</div><div>]] .. format_number(math.abs(utils.round(ElevatorData.currentMaxSpeed*3.6))) .. [[km/h</div>
