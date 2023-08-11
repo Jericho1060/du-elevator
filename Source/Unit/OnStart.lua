@@ -220,7 +220,7 @@ end
 --[[
     Version Management
 ]]
-local version = "V 1.3.1"
+local version = "V 1.3.2"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -363,6 +363,13 @@ function storeReferencePlanet(force)
     if __DEBUG then system.print('Planet ID: ' .. PlanetID) end
 end
 
+--[[
+    --compute distance from a planet sea level
+]]
+function computePlanetSeaDistance(planetData, constructWorldPosition)
+    return (vec3(planetData.center) - vec3(constructWorldPosition)):len() - planetData.radius
+end
+
 ConstructInitPos = nil
 BaseForward = nil
 storeIniPosAndForward()
@@ -381,12 +388,16 @@ ElevatorData = {
     longitudinalSpeed = 0,
     coreAltitude = TargetAltitude,
     altitude = TargetAltitude,
-    planetData = nil
+    planetData = nil,
+    direction = 'Stabilizing'
 }
 
 storeReferencePlanet(false)
 
-
+--computing the distance from the planet sea level as target altitude
+if ElevatorData.planetData ~= nil then
+    TargetAltitude = computePlanetSeaDistance(ElevatorData.planetData, construct.getWorldPosition())
+end
 
 --TODO: to replace with a computing in flush from the current acceleration and the friction acceleration (construct.getWorldAirFrictionAcceleration)
 MaxSpeed = construct.getFrictionBurnSpeed() -- for security to avoid burning if going too fast
@@ -598,17 +609,17 @@ local systemOnFlush = {
             brakeDistance, _ = computeDistanceAndTime(ElevatorData.verticalSpeed, 0, inertialMass, 0, 0, maxBrake - (g * inertialMass * speedSign))
         end
         ElevatorData.coreAltitude = core.getAltitude()
-        ElevatorData.altitude = (vec3(ElevatorData.planetData.center) - vec3(constructWorldPosition)):len() - ElevatorData.planetData.radius
+        ElevatorData.altitude = computePlanetSeaDistance(ElevatorData.planetData, constructWorldPosition)
         local distance = TargetAltitude - ElevatorData.altitude
         local targetDistance = utils.sign(distance) * (math.abs(distance)-brakeDistance)
         distancePID:inject(targetDistance)
-        if distancePID:get() > 0.5 or ElevatorData.verticalSpeedSigned < -MaxSpeed then --using a 0.5 meter deadband for stabilizing
+        if distancePID:get() > 0.25 or ElevatorData.verticalSpeedSigned < -MaxSpeed then --using a 0.25 meter deadband for stabilizing
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, 1)
             ElevatorData.direction = 'up'
             if ElevatorData.verticalSpeedSigned < 0 then
                 finalBrakeInput = 1
             end
-        elseif distancePID:get() < -0.5 or ElevatorData.verticalSpeedSigned > MaxSpeed then
+        elseif distancePID:get() < -0.25 or ElevatorData.verticalSpeedSigned > MaxSpeed then
             Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, -1)
             ElevatorData.direction = 'down'
             if ElevatorData.verticalSpeedSigned > 0 then
@@ -616,6 +627,9 @@ local systemOnFlush = {
             end
         else
             Nav.axisCommandManager:resetCommand(axisCommandId.vertical)
+            if (math.abs(distancePID:get()) < .25) and canBrake then
+                finalBrakeInput = 1
+            end
             ElevatorData.direction = 'stabilizing'
         end
 
