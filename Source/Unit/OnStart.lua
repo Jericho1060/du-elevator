@@ -234,7 +234,7 @@ end
 --[[
     Version Management
 ]]
-local version = "V 1.3.3"
+local version = "V 1.3.4"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -682,10 +682,8 @@ local systemOnFlush = {
         then
             finalBrakeInput = 1
             --use engines to help braking
-            if ElevatorData.verticalSpeedSigned < 0 then
+            if ElevatorData.verticalSpeedSigned < 0 and isInAtmosphere then
                 Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, 1)
-            elseif ElevatorData.verticalSpeedSigned > 0 then
-                Nav.axisCommandManager:setThrottleCommand(axisCommandId.vertical, -1)
             end
         end
         ElevatorData.isBreaking = (finalBrakeInput == 1)
