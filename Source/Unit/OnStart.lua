@@ -210,7 +210,7 @@ function RENDER_HUD(ElevatorData)
                 displayName = ' >> ' .. bookmark.name
                 class = 'movingto'
             end
-            html = html .. '<div class="' .. class .. '"><div>' .. displayName .. '</div><div>' .. format_number(bookmark.altitude) .. 'm</div></div>'
+            html = html .. '<div class="' .. class .. '"><div>' .. displayName .. '</div><div>' .. format_number((utils.round(bookmark.altitude*100)/100)) .. 'm</div></div>'
         end
         html = html .. '</div>'
     end
@@ -234,7 +234,7 @@ end
 --[[
     Version Management
 ]]
-local version = "V 1.3.4"
+local version = "V 1.4.0"
 local log_split = "================================================="
 --printing version in lua chat
 system.print(log_split)local a=""local b=math.ceil((50-#version-2)/2)for c=1,b,1 do a=a..'='end;a=a.." "..version.." "for c=1,b,1 do a=a..'='end;system.print(a)system.print(log_split)
@@ -251,6 +251,7 @@ Serializer = setmetatable({}, Serializer)
     Unminified Source available at: https://github.com/Jericho1060/DualUniverse/blob/master/ElementsMetatable/FuelTank.lua
 ]]
 FuelTank={__index={name='',percentage=0,timeLeft=0,lastRefresh=0,fuelType='rocket',refresh=function(self)local a=system.getUtcTime()if lastRefresh~=a then local b=self.getClass():lower()if b:find('atmo')then self.fuelType="atmo"elseif b:find('space')then self.fuelType="space"end;local c=self.getWidgetData()local d=json.decode(c)self.name=d.name;self.percentage=d.percentage;self.timeLeft=tonumber(d.timeLeft)self.lastRefresh=a end end,getName=function(self)self:refresh()return self.name end,getPercentFilled=function(self)self:refresh()return self.percentage end,getSecondsLeft=function(self)self:refresh()return self.timeLeft end,getFuelType=function(self)self:refresh()return self.fuelType end,getTimeLeftString=function(self)local e=self:getSecondsLeft()if e==nil or e<=0 then return"-"end;days=string.format("%2.f",math.floor(e/(3600*24)))hours=string.format("%2.f",math.floor(e/3600-days*24))mins=string.format("%2.f",math.floor(e/60-hours*60-days*24*60))secs=string.format("%2.f",math.floor(e-hours*3600-days*24*60*60-mins*60))str=""if tonumber(days)>0 then str=str..days.."d "end;if tonumber(hours)>0 then str=str..hours.."h "end;if tonumber(mins)>0 then str=str..mins.."m "end;if tonumber(secs)>0 then str=str..secs.."s"end;return str end,dump=function(self)self:refresh()system.print('{name="'..self.name..'",percentage='..self.percentage..',timeLeft='..self.timeLeft..',fuelType="'..self.fuelType..'"}')end}}
+
 --[[
     Detecting elements linked
 ]]
@@ -305,6 +306,7 @@ goingForward = false
 shiftPressed = false
 jumpDelta = 0
 baseAcceleration = 0.8
+BrakePressed = false
 
 Nav = Navigator.new(system, core, unit)
 Nav.axisCommandManager:setupCustomTargetSpeedRanges(axisCommandId.longitudinal, {100, 500, 1000, 2000,3000, 5000})
@@ -382,6 +384,42 @@ function storeReferencePlanet(force)
     if __DEBUG then system.print('Planet ID: ' .. PlanetID) end
 end
 
+function getClosestBodyIdFromAtlas()
+    local closestBody = nil
+    local closestDistance = 0
+    local constructPos = vec3(construct.getWorldPosition())
+    for _, body in pairs(atlas[0]) do
+        local distance = (vec3(body.center) - constructPos):len()
+        if closestBody == nil or distance < closestDistance then
+            closestBody = body.id
+            closestDistance = distance
+        end
+    end
+    return closestBody
+end
+
+function mergeBookmarksFromDatabank()
+    if (databank ~= nil) and databank.hasKey('Bookmarks') then
+        local str = databank.getStringValue('Bookmarks')
+        local bookmarks_data = Serializer:parse(str)
+        for _, bookmark in pairs(bookmarks_data) do
+            local exists = false
+            for _, b in pairs(Bookmarks) do
+                if b.name == bookmark.name then
+                    exists = true
+                    break
+                end
+            end
+            if not exists then
+                Bookmarks[#Bookmarks+1] = bookmark
+            end
+        end
+        databank.setStringValue('Bookmarks', Serializer:stringify(Bookmarks))
+    end
+end
+
+mergeBookmarksFromDatabank()
+
 --[[
     Compute planet atmosphere altitude
 ]]
@@ -418,15 +456,13 @@ ElevatorData = {
     longitudinalSpeed = 0,
     coreAltitude = TargetAltitude,
     altitude = TargetAltitude,
-    planetData = nil,
+    planetData = atlas[0][getClosestBodyIdFromAtlas()],
     direction = 'Stabilizing',
     atmosphereDistance = 0,
     atmosphereAltitude = 0,
     atmoMaxSpeed = MaxSpeedOnPlanet,
     currentMaxSpeed = MaxSpeed,
 }
-
-storeReferencePlanet(false)
 
 --computing the distance from the planet sea level as target altitude
 if ElevatorData.planetData ~= nil then
@@ -435,7 +471,7 @@ if ElevatorData.planetData ~= nil then
 end
 
 --base selected bookmark is 0 -> none selected as index 0 doesn't exist in lua
-selectedBookmarkIndex = 0
+selectedBookmarkIndex = 1
 
 --[[
     init the HUD
@@ -765,20 +801,44 @@ Script.system:onFlush(systemOnFlush)
     Actions
 ]]
 local systemActionsStart = {}
+local systemActionsLoop = {}
+local systemActionsStop = {}
 
 systemActionsStart[Script.system.ACTIONS.DOWN] =  function ()
-    if selectedBookmarkIndex < #Bookmarks then
-        selectedBookmarkIndex = selectedBookmarkIndex + 1
+    if BrakePressed then
+        if selectedBookmarkIndex < #Bookmarks then
+            local temp = Bookmarks[selectedBookmarkIndex]
+            Bookmarks[selectedBookmarkIndex] = Bookmarks[selectedBookmarkIndex + 1]
+            selectedBookmarkIndex = selectedBookmarkIndex + 1
+            Bookmarks[selectedBookmarkIndex] = temp
+        else
+            selectedBookmarkIndex = 1
+        end
     else
-        selectedBookmarkIndex = 1
+        if selectedBookmarkIndex < #Bookmarks then
+            selectedBookmarkIndex = selectedBookmarkIndex + 1
+        else
+            selectedBookmarkIndex = 1
+        end
+        if __DEBUG then system.print('Selected Bookmark Index: ' .. selectedBookmarkIndex) end
     end
-    if __DEBUG then system.print('Selected Bookmark Index: ' .. selectedBookmarkIndex) end
 end
 systemActionsStart[Script.system.ACTIONS.UP] =  function ()
-    if selectedBookmarkIndex > 1 then
-        selectedBookmarkIndex = selectedBookmarkIndex - 1
+    if BrakePressed then
+        if selectedBookmarkIndex > 1 then
+            local temp = Bookmarks[selectedBookmarkIndex]
+            Bookmarks[selectedBookmarkIndex] = Bookmarks[selectedBookmarkIndex - 1]
+            selectedBookmarkIndex = selectedBookmarkIndex - 1
+            Bookmarks[selectedBookmarkIndex] = temp
+        else
+            selectedBookmarkIndex = #Bookmarks
+        end
     else
-        selectedBookmarkIndex = #Bookmarks
+        if selectedBookmarkIndex > 1 then
+            selectedBookmarkIndex = selectedBookmarkIndex - 1
+        else
+            selectedBookmarkIndex = #Bookmarks
+        end
     end
     if __DEBUG then system.print('Selected Bookmark Index: ' .. selectedBookmarkIndex) end
 end
@@ -794,10 +854,15 @@ end
 systemActionsStart[Script.system.ACTIONS.OPTION_1] = function()
     storeIniPosAndForward(true)
 end
-systemActionsStart[Script.system.ACTIONS.OPTION_2] = function()
-    storeReferencePlanet(true)
+systemActionsStart[Script.system.ACTIONS.BRAKE] = function()
+    BrakePressed = true
+end
+systemActionsStop[Script.system.ACTIONS.BRAKE] = function()
+    BrakePressed = false
 end
 Script.system:onActionStart(systemActionsStart) --loading all "actionStart" functions
+Script.system:onActionLoop(systemActionsLoop) --loading all "actionLoop" functions
+Script.system:onActionStop(systemActionsStop) --loading all "actionStop" functions
 
 --[[
     Chat Commands
@@ -808,6 +873,46 @@ Script.system:onInputText(function (text)
         TargetAltitude = tonumber(text:split(':')[2]) or BaseAltitute
         brakeInput = 0
         system.print('Target Altitude set to ' .. TargetAltitude .. 'm')
+    elseif text:lower():find('save:') then
+        if databank == nil then
+            system.print('Please, install a databank to save bookmarks')
+            return
+        end
+        if databank.hasKey('Bookmarks') then
+            local str = databank.getStringValue('Bookmarks')
+            local bookmarks_data = Serializer:parse(str)
+
+        end
+        local name = text:split(':')[2]
+        for _, bookmark in pairs(Bookmarks) do
+            if bookmark.name == name then
+                system.print('Bookmark "' .. name .. '"" already exists')
+                return
+            end
+        end
+        if name ~= nil then
+            local altitude = ElevatorData.altitude
+            local bookmark = {
+                name = name,
+                altitude = altitude
+            }
+            Bookmarks[#Bookmarks+1] = bookmark
+            databank.setStringValue('Bookmarks', Serializer:stringify(Bookmarks))
+            system.print('Bookmark ' .. name .. ' saved at ' .. altitude .. 'm')
+        else
+            system.print('Please, provide a name for the bookmark')
+        end
+    elseif text:lower() == 'delete' then
+        if databank == nil then
+            system.print('Please, install a databank to manage bookmarks with commands')
+            return
+        end
+        if Bookmarks[selectedBookmarkIndex] then
+            --delete selected bookmark
+            local name = Bookmarks[selectedBookmarkIndex].name
+            table.remove(Bookmarks, selectedBookmarkIndex)
+            databank.setStringValue('Bookmarks', Serializer:stringify(Bookmarks))
+        end
     else
         system.print('Unknown command')
     end
